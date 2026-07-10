@@ -1,0 +1,11 @@
+{
+  "id": 1,
+  "name": "Калькулятор зарплат (Бирюлёво)",
+  "description": "Скрипт для свода отчетов по зарплатам филиала Бирюлёво. Собирает данные по базовой з/п, УС и Аптеке из таблиц XLSX.",
+  "type": "python-script",
+  "entry": "salary_birulevo.py",
+  "icon": "icon_birulevo.png",
+  "dependencies": [
+    "openpyxl"
+  ]
+}
