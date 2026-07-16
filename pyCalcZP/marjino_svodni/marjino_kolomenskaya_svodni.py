@@ -147,10 +147,10 @@ for filename in file_names:
     except Exception as e:
         print(f"[ОШИБКА] Не удалось посчитать анализы (G19/G20) в файле {filename}: {e}")
 
-    print_values("G21", 13, input_ws, output_ws, rows_indent, filename)
+    print_values("G23", 13, input_ws, output_ws, rows_indent, filename)
     print_values("C10", 14, input_ws, output_ws, rows_indent, filename)
-    print_values("H59", 15, input_ws, output_ws, rows_indent, filename)
-    print_values("J59", 16, input_ws, output_ws, rows_indent, filename)
+    print_values("H50", 15, input_ws, output_ws, rows_indent, filename)
+    print_values("J50", 16, input_ws, output_ws, rows_indent, filename)
     print_values("G19", 17, input_ws, output_ws, rows_indent, filename)
     print_values("G20", 18, input_ws, output_ws, rows_indent, filename)
 
