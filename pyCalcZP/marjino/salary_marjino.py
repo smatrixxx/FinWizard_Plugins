@@ -6,35 +6,34 @@
 """
 
 import os
-import sys
 import glob
 import datetime
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-import json
 
+import finwizard_sdk as fw
 
 # ============================================================
 # Вспомогательные функции
 # ============================================================
+
 def sanitize_sheet_title(title: str, max_len=31) -> str:
     """Очищает название листа Excel от запрещённых символов"""
     if not title:
         return "Без_фамилии"
-    
-    # Запрещённые символы в названиях листов Excel
+
     invalid_chars = r'\/:*?"<>|'
     clean = ''.join(c for c in title if c not in invalid_chars)
     clean = clean.strip()
-    
+
     if not clean:
         clean = "Без_фамилии"
-    
-    # Максимальная длина 31 символ
+
     if len(clean) > max_len:
         clean = clean[:max_len]
-    
+
     return clean
+
 
 def read_cell_double(ws, row, col):
     """Читает число из ячейки, обрабатывает строки вида '2,00', '50 000,00'"""
@@ -123,7 +122,7 @@ def format_time_to_minutes(time_str):
 # Марьино: диапазоны строк для поиска данных
 SURNAME_ROWS = range(4, 15)    # H4:H15 — фамилии (строки 4-15)
 US_ROWS = range(29, 34)        # A29:A33 — УС
-APTEKA_ROWS = range(38, 45)    # Изменено: строки с 38 по 44 (включительно) для Аптеки
+APTEKA_ROWS = range(38, 45)    # строки с 38 по 44 (включительно) для Аптеки
 TIME_ROWS = range(4, 15)       # I4:I14 — Время (строки 4-14)
 
 
@@ -178,7 +177,9 @@ def process_salary(input_folder, output_file):
 
     # ============ Обработка файлов ============
 
-    for filepath in xlsx_files:
+    total_files = len(xlsx_files)
+    for file_idx, filepath in enumerate(xlsx_files, start=1):
+        fw.core.update_progress(int(file_idx / total_files * 100), f"Обработка {os.path.basename(filepath)}")
         print(f"\n=== Файл: {filepath} ===")
 
         try:
@@ -231,7 +232,7 @@ def process_salary(input_folder, output_file):
                     print(f"    УС: A{r}={n} D{r} raw:{read_cell_string(ws, r, 4)} "
                           f"-> double:{read_cell_double(ws, r, 4)}")
 
-            # Отладка Аптека (выводит данные из столбца F (6))
+            # Отладка Аптека (столбец F (6))
             for r in APTEKA_ROWS:
                 n = read_cell_string(ws, r, 1)
                 if n:
@@ -245,7 +246,7 @@ def process_salary(input_folder, output_file):
                 surname_next_row[surname] = 3
 
                 safe_title = sanitize_sheet_title(surname)
-                
+
                 original_title = safe_title
                 counter = 1
                 while safe_title in output_wb.sheetnames:
@@ -309,12 +310,12 @@ def process_salary(input_folder, output_file):
                     break
             out_ws.cell(row=row, column=3, value=us_val).alignment = data_alignment
 
-            # D: Аптека — теперь берём данные из столбца F (6)
+            # D: Аптека — столбец F (6)
             apteka_val = 0.0
             for r in APTEKA_ROWS:
                 ap_name = read_cell_string(ws, r, 1)
                 if ap_name and names_match(ap_name, surname):
-                    apteka_val = read_cell_double(ws, r, 6) # Изменено с 3 на 6 (столбец F)
+                    apteka_val = read_cell_double(ws, r, 6)
                     print(f"    Аптека найдена: строка {r} = {apteka_val}")
                     break
             out_ws.cell(row=row, column=4, value=apteka_val).alignment = data_alignment
@@ -329,7 +330,7 @@ def process_salary(input_folder, output_file):
                 vremya = format_time_to_minutes(vremya_raw)
             out_ws.cell(row=row, column=6, value=vremya).alignment = data_alignment
 
-            # G: Итого = З/п + УС + Аптека (Исправлено: добавлена apteka_val)
+            # G: Итого = З/п + УС + Аптека
             itogo = zp_obshaya + us_val + apteka_val
             out_ws.cell(row=row, column=7, value=itogo).alignment = data_alignment
 
@@ -406,41 +407,25 @@ def process_salary(input_folder, output_file):
 # Точка входа
 # ============================================================
 
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Ошибка: Скрипт запущен без JSON-параметров FinWizard!")
-        sys.exit(1)
-
-    # Движок передает пути к json-файлам в качестве аргументов
-    input_json_path = sys.argv[1]
-    output_json_path = sys.argv[2]
-
-    # Читаем параметры из input.json
-    with open(input_json_path, 'r', encoding='utf-8') as f:
-        params = json.load(f)
-
-    # Вытаскиваем нужные данные (m_pluginManager передает список файлов, берем их директорию)
+@fw.entrypoint
+def run(params):
     xlsx_files_list = params.get("xlsxFiles", [])
     if not xlsx_files_list:
-        print("Ошибка: Список xlsxFiles пуст!")
-        sys.exit(1)
-        
-    # Так как скрипт ожидал папку, берем родительскую папку первого файла
+        raise fw.PluginError("Список xlsxFiles пуст!")
+
     input_folder = os.path.dirname(xlsx_files_list[0])
     output_file = params.get("outputFile")
 
-    # Запускаем твою функцию
     success = process_salary(input_folder, output_file)
-    
-    # Записываем статус для C++ движка, чтобы он понял, что всё прошло ок
-    output_data = {"success": success}
-    if success:
-        output_data["message"] = "Расчет зарплат успешно завершен!"
-        output_data["outputPath"] = output_file
-    else:
-        output_data["error"] = "Произошла ошибка при обработке Excel файлов."
 
-    with open(output_json_path, 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=4)
+    if not success:
+        raise fw.PluginError("Произошла ошибка при обработке Excel файлов.")
 
-    sys.exit(0 if success else 1)
+    return {
+        "message": "Расчет зарплат успешно завершен!",
+        "outputPath": output_file,
+    }
+
+
+if __name__ == "__main__":
+    run()

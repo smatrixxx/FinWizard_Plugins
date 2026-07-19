@@ -6,12 +6,12 @@
 """
 
 import os
-import sys
 import glob
 import datetime
 from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-import json
+
+import finwizard_sdk as fw
 
 # ============================================================
 # Вспомогательные функции
@@ -21,20 +21,19 @@ def sanitize_sheet_title(title: str, max_len=31) -> str:
     """Очищает название листа под требования Excel/openpyxl"""
     if not title:
         return "Без_фамилии"
-    
-    # Убираем запрещённые символы
+
     invalid = r'\/:*?"<>|'
     clean = ''.join(c for c in title if c not in invalid)
     clean = clean.strip()
-    
+
     if not clean:
         clean = "Без_фамилии"
-    
-    # Excel ограничивает 31 символ
+
     if len(clean) > max_len:
         clean = clean[:max_len]
-    
+
     return clean
+
 
 def read_cell_double(ws, row, col):
     """Читает число из ячейки, обрабатывает строки вида '2,00', '50 000,00'"""
@@ -167,7 +166,9 @@ def process_salary(input_folder, output_file):
 
     # ============ Обработка файлов ============
 
-    for filepath in xlsx_files:
+    total_files = len(xlsx_files)
+    for file_idx, filepath in enumerate(xlsx_files, start=1):
+        fw.core.update_progress(int(file_idx / total_files * 100), f"Обработка {os.path.basename(filepath)}")
         print(f"\n=== Файл: {filepath} ===")
 
         try:
@@ -225,8 +226,7 @@ def process_salary(input_folder, output_file):
                 surname_next_row[surname] = 3
 
                 safe_title = sanitize_sheet_title(surname)
-                
-                # Если после очистки название стало неуникальным — добавляем номер
+
                 original_title = safe_title
                 counter = 1
                 while safe_title in output_wb.sheetnames:
@@ -385,41 +385,27 @@ def process_salary(input_folder, output_file):
 # Точка входа
 # ============================================================
 
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Ошибка: Скрипт запущен без JSON-параметров FinWizard!")
-        sys.exit(1)
-
-    # Движок передает пути к json-файлам в качестве аргументов
-    input_json_path = sys.argv[1]
-    output_json_path = sys.argv[2]
-
-    # Читаем параметры из input.json
-    with open(input_json_path, 'r', encoding='utf-8') as f:
-        params = json.load(f)
-
-    # Вытаскиваем нужные данные (m_pluginManager передает список файлов, берем их директорию)
+@fw.entrypoint
+def run(params):
+    # Движок передает список xlsx-файлов; скрипт исторически ожидал папку,
+    # поэтому берём родительскую папку первого файла (как и раньше).
     xlsx_files_list = params.get("xlsxFiles", [])
     if not xlsx_files_list:
-        print("Ошибка: Список xlsxFiles пуст!")
-        sys.exit(1)
-        
-    # Так как скрипт ожидал папку, берем родительскую папку первого файла
+        raise fw.PluginError("Список xlsxFiles пуст!")
+
     input_folder = os.path.dirname(xlsx_files_list[0])
     output_file = params.get("outputFile")
 
-    # Запускаем твою функцию
     success = process_salary(input_folder, output_file)
-    
-    # Записываем статус для C++ движка, чтобы он понял, что всё прошло ок
-    output_data = {"success": success}
-    if success:
-        output_data["message"] = "Расчет зарплат успешно завершен!"
-        output_data["outputPath"] = output_file
-    else:
-        output_data["error"] = "Произошла ошибка при обработке Excel файлов."
 
-    with open(output_json_path, 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=4)
+    if not success:
+        raise fw.PluginError("Произошла ошибка при обработке Excel файлов.")
 
-    sys.exit(0 if success else 1)
+    return {
+        "message": "Расчет зарплат успешно завершен!",
+        "outputPath": output_file,
+    }
+
+
+if __name__ == "__main__":
+    run()
