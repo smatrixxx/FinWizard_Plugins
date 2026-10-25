@@ -5,7 +5,7 @@
   "type": "python-script",
   "entry": "marjino_kolomenskaya_svodni.py",
   "icon": "icon_marjino.png",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "min_engine_version": "1.0.0",
   "dependencies": [
     "openpyxl"
